@@ -92,6 +92,8 @@
         <button type="submit" class="btn btn--pri" id="btnSubmit">Enregistrer l'achat</button>
         <button type="button" class="btn btn--ghost" id="btnCancelEdit" hidden>Annuler la modification</button>
       </div>
+
+      <p class="save-state" id="saveState">Enregistrement automatique sur ce téléphone.</p>
     </form>
 
     <div class="card card--soft" id="todayCard">
@@ -108,16 +110,36 @@
       <div id="histoList" class="days"></div>
     </div>
 
+    <div class="card">
+      <h2 class="card__title">Sauvegarde automatique</h2>
+      <p class="save-state" id="storageState">Vérification du stockage…</p>
+
+      <div class="field">
+        <span class="field__label">Fichier de sauvegarde</span>
+        <div id="autoBackupChips" class="chips chips--period">
+          <button type="button" class="chip" data-mode="each">À chaque enregistrement</button>
+          <button type="button" class="chip" data-mode="daily">Une fois par jour</button>
+          <button type="button" class="chip" data-mode="off">Désactivé</button>
+        </div>
+        <p class="muted small" id="autoBackupState"></p>
+      </div>
+
+      <div class="field" style="margin-bottom:0">
+        <span class="field__label">Versions précédentes</span>
+        <div id="snapList" class="snaps"></div>
+      </div>
+    </div>
+
     <div class="card card--soft">
       <h2 class="card__title">Mes données</h2>
       <div class="tools">
         <button type="button" class="btn btn--ghost btn--sm" id="btnExportCsv">Exporter en CSV</button>
-        <button type="button" class="btn btn--ghost btn--sm" id="btnExportJson">Sauvegarde (JSON)</button>
-        <button type="button" class="btn btn--ghost btn--sm" id="btnImport">Restaurer</button>
+        <button type="button" class="btn btn--ghost btn--sm" id="btnExportJson">Sauvegarde maintenant</button>
+        <button type="button" class="btn btn--ghost btn--sm" id="btnImport">Restaurer un fichier</button>
         <button type="button" class="btn btn--danger btn--sm" id="btnReset">Tout effacer</button>
       </div>
       <input type="file" id="fileImport" accept=".json,application/json" hidden>
-      <p class="muted small">Les données restent sur ce téléphone (stockage local du navigateur). Pensez à faire une sauvegarde de temps en temps.</p>
+      <p class="muted small">Les données restent sur ce téléphone (stockage local du navigateur) : elles sont écrites dès l'appui sur « Enregistrer », sans connexion. Les fichiers de sauvegarde arrivent dans vos téléchargements, sauvegardés à leur tour par iCloud ou Google Drive selon votre téléphone.</p>
     </div>
   </section>
 

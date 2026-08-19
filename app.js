@@ -5,6 +5,10 @@
 'use strict';
 
 const STORAGE_KEY = 'huitres-ile-de-re.v1';
+/* Historique interne des versions : conservé à part, il survit à « Tout effacer ». */
+const SNAP_KEY = STORAGE_KEY + '.history';
+const MAX_SNAPS = 12;
+const BACKUP_MODES = ['each', 'daily', 'off'];
 
 const DEFAULT_CATEGORIES = [
   'Fine de claire',
@@ -20,7 +24,12 @@ const DEFAULT_CATEGORIES = [
 /* ---------------- Stockage ---------------- */
 
 function blankState() {
-  return { entries: [], categories: DEFAULT_CATEGORIES.slice(), lastCategory: null };
+  return {
+    entries: [],
+    categories: DEFAULT_CATEGORIES.slice(),
+    lastCategory: null,
+    settings: { autoBackup: 'daily', lastBackupAt: null }
+  };
 }
 
 function loadState() {
@@ -36,6 +45,14 @@ function loadState() {
       state.categories = data.categories.filter(c => typeof c === 'string' && c.trim()).map(c => c.trim());
     }
     if (typeof data.lastCategory === 'string') state.lastCategory = data.lastCategory;
+    if (data.settings && typeof data.settings === 'object') {
+      if (BACKUP_MODES.includes(data.settings.autoBackup)) {
+        state.settings.autoBackup = data.settings.autoBackup;
+      }
+      if (typeof data.settings.lastBackupAt === 'string') {
+        state.settings.lastBackupAt = data.settings.lastBackupAt;
+      }
+    }
     return state;
   } catch (err) {
     console.warn('Données illisibles, repartons de zéro.', err);
@@ -71,9 +88,136 @@ function makeId() {
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    markSaved(true);
+    return true;
   } catch (err) {
+    markSaved(false);
     toast("Impossible d'enregistrer (stockage plein ?)");
+    return false;
   }
+}
+
+/* ---------------- Enregistrement & sauvegarde automatiques ---------------- */
+
+/** Indicateur « c'est enregistré », sous le formulaire. */
+function markSaved(ok) {
+  const el = $('#saveState');
+  if (!el) return;
+  if (ok) {
+    const h = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    el.className = 'save-state';
+    el.textContent = 'Enregistré automatiquement à ' + h + ' sur ce téléphone.';
+  } else {
+    el.className = 'save-state is-err';
+    el.textContent = "Échec de l'enregistrement : stockage du navigateur plein ou bloqué.";
+  }
+}
+
+/**
+ * Demande au navigateur de ne pas effacer les données tout seul
+ * (nettoyage automatique quand la mémoire manque).
+ */
+async function ensurePersistentStorage() {
+  const el = $('#storageState');
+  if (!navigator.storage || !navigator.storage.persist) {
+    if (el) {
+      el.className = 'save-state is-warn';
+      el.textContent = 'Données enregistrées sur ce téléphone. Ce navigateur ne permet pas de les protéger : gardez un fichier de sauvegarde.';
+    }
+    return null;
+  }
+  let granted = false;
+  try {
+    granted = await navigator.storage.persisted() || await navigator.storage.persist();
+  } catch (err) { granted = false; }
+  if (el) {
+    el.className = granted ? 'save-state' : 'save-state is-warn';
+    el.textContent = granted
+      ? 'Données protégées : le navigateur ne les effacera pas tout seul.'
+      : 'Données enregistrées, mais le navigateur peut les effacer s\'il manque de place : gardez un fichier de sauvegarde.';
+  }
+  return granted;
+}
+
+/** Copie horodatée de l'état courant, avant modification (permet de revenir en arrière). */
+function pushSnapshot() {
+  if (!state.entries.length) return; // rien à conserver : pas de version vide dans la liste
+  try {
+    const snaps = loadSnapshots();
+    const payload = { entries: state.entries, categories: state.categories };
+    const last = snaps[0];
+    if (last && JSON.stringify(last.data) === JSON.stringify(payload)) return;
+    snaps.unshift({ at: new Date().toISOString(), data: payload });
+    writeSnapshots(snaps.slice(0, MAX_SNAPS));
+  } catch (err) {
+    /* Une copie de secours manquante ne doit jamais bloquer une saisie. */
+  }
+}
+
+function loadSnapshots() {
+  try {
+    const raw = localStorage.getItem(SNAP_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(s => s && s.at && s.data) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function writeSnapshots(snaps) {
+  let list = snaps.slice();
+  while (list.length) {
+    try {
+      localStorage.setItem(SNAP_KEY, JSON.stringify(list));
+      return;
+    } catch (err) {
+      list = list.slice(0, Math.floor(list.length / 2)); // stockage plein : on allège
+    }
+  }
+  try { localStorage.removeItem(SNAP_KEY); } catch (err) {}
+}
+
+function restoreSnapshot(at) {
+  const snap = loadSnapshots().find(s => s.at === at);
+  if (!snap) return;
+  const nb = (snap.data.entries || []).length;
+  if (!confirm('Revenir à la version du ' + fmtDateTime(at) + ' (' + nb + ' achat(s)) ?\nLa version actuelle sera d\'abord ajoutée à la liste.')) return;
+  pushSnapshot();
+  state.entries = (snap.data.entries || []).filter(isValidEntry).map(normalizeEntry);
+  if (Array.isArray(snap.data.categories) && snap.data.categories.length) {
+    state.categories = snap.data.categories.slice();
+  }
+  selectedCategory = null;
+  saveState();
+  renderAll();
+  toast('Version restaurée');
+}
+
+/** Écrit le fichier de sauvegarde. auto = déclenché tout seul après un enregistrement. */
+function backupToFile(auto) {
+  state.settings.lastBackupAt = new Date().toISOString();
+  saveState();
+  download('huitres-sauvegarde-' + todayISO() + '.json', JSON.stringify(state, null, 2), 'application/json');
+  renderBackupPanel();
+  toast(auto ? 'Sauvegarde automatique créée' : 'Fichier de sauvegarde créé');
+}
+
+/** Appelé après chaque modification des achats, dans le geste de l'utilisateur. */
+function maybeAutoBackup() {
+  const mode = state.settings.autoBackup;
+  if (mode === 'off') return;
+  if (mode === 'daily') {
+    const last = state.settings.lastBackupAt;
+    if (last && last.slice(0, 10) === todayISO()) return;
+  }
+  backupToFile(true);
+}
+
+/** À appeler après toute modification des achats. */
+function afterChange() {
+  saveState();
+  renderBackupPanel();
+  maybeAutoBackup();
 }
 
 let state = loadState();
@@ -120,6 +264,12 @@ function fmtDateLong(iso) {
     weekday: 'long', day: 'numeric', month: 'long'
   });
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function fmtDateTime(isoDateTime) {
+  const d = new Date(isoDateTime);
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) +
+    ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function fmtDateShort(iso) {
@@ -267,6 +417,7 @@ $('#entryForm').addEventListener('submit', ev => {
     return;
   }
   const date = $('#fDate').value || todayISO();
+  pushSnapshot();
 
   if (editingId) {
     const entry = state.entries.find(e => e.id === editingId);
@@ -291,7 +442,7 @@ $('#entryForm').addEventListener('submit', ev => {
   }
 
   state.lastCategory = selectedCategory;
-  saveState();
+  afterChange();
   renderToday();
 });
 
@@ -335,9 +486,10 @@ function deleteEntry(id) {
   const e = state.entries.find(x => x.id === id);
   if (!e) return;
   if (!confirm('Supprimer cet achat du ' + fmtDateShort(e.date) + ' (' + fmtDozens(dozensOf(e)) + ') ?')) return;
+  pushSnapshot();
   state.entries = state.entries.filter(x => x.id !== id);
   if (editingId === id) stopEditing();
-  saveState();
+  afterChange();
   renderHistory();
   renderToday();
   toast('Achat supprimé');
@@ -623,10 +775,66 @@ $('#btnExportCsv').addEventListener('click', () => {
   toast('CSV exporté');
 });
 
-$('#btnExportJson').addEventListener('click', () => {
-  download('huitres-sauvegarde-' + todayISO() + '.json', JSON.stringify(state, null, 2), 'application/json');
-  toast('Sauvegarde créée');
+$('#btnExportJson').addEventListener('click', () => backupToFile(false));
+
+/* Choix du mode de sauvegarde automatique */
+$$('#autoBackupChips .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    state.settings.autoBackup = chip.dataset.mode;
+    saveState();
+    renderBackupPanel();
+    if (chip.dataset.mode === 'off') {
+      toast('Sauvegarde automatique désactivée');
+    } else {
+      toast('Sauvegarde automatique activée');
+      maybeAutoBackup();
+    }
+  });
 });
+
+/** Carte « Sauvegarde automatique » : état du stockage, mode, versions précédentes. */
+function renderBackupPanel() {
+  $$('#autoBackupChips .chip').forEach(c => {
+    c.classList.toggle('is-on', c.dataset.mode === state.settings.autoBackup);
+  });
+
+  const modeTxt = {
+    each: 'Un fichier est créé à chaque enregistrement.',
+    daily: "Un fichier est créé automatiquement au premier enregistrement de la journée.",
+    off: 'Aucun fichier automatique : les données restent uniquement dans ce navigateur.'
+  }[state.settings.autoBackup];
+  const last = state.settings.lastBackupAt
+    ? ' Dernier fichier : ' + fmtDateTime(state.settings.lastBackupAt) + '.'
+    : ' Aucun fichier créé pour le moment.';
+  $('#autoBackupState').textContent = modeTxt + last;
+
+  const box = $('#snapList');
+  const snaps = loadSnapshots();
+  if (!snaps.length) {
+    box.innerHTML = '<p class="muted small" style="margin:0">Les versions précédentes apparaîtront ici après vos premiers enregistrements.</p>';
+    return;
+  }
+  box.innerHTML = '';
+  snaps.forEach(snap => {
+    const list = (snap.data.entries || []).filter(isValidEntry).map(normalizeEntry);
+    const doz = list.reduce((sum, e) => sum + dozensOf(e), 0);
+
+    const row = document.createElement('div');
+    row.className = 'snap';
+    row.innerHTML = '<div class="snap__main">' +
+      '<div class="snap__when">' + escapeHtml(fmtDateTime(snap.at)) + '</div>' +
+      '<div class="snap__what">' + list.length + ' ' + plural(list.length, 'achat', 'achats') +
+      ' · ' + escapeHtml(fmtDozens(doz)) + '</div></div>';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn--ghost btn--sm';
+    btn.textContent = 'Restaurer';
+    btn.addEventListener('click', () => restoreSnapshot(snap.at));
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
 
 $('#btnImport').addEventListener('click', () => $('#fileImport').click());
 
@@ -639,7 +847,8 @@ $('#fileImport').addEventListener('change', ev => {
       const data = JSON.parse(reader.result);
       const incoming = Array.isArray(data.entries) ? data.entries.filter(isValidEntry).map(normalizeEntry) : [];
       if (!incoming.length) return toast('Aucun achat trouvé dans ce fichier');
-      if (!confirm('Restaurer ' + incoming.length + ' achat(s) ? Les données actuelles seront remplacées.')) return;
+      if (!confirm('Restaurer ' + incoming.length + ' achat(s) ? Les données actuelles seront remplacées.\nUne copie de la version actuelle est conservée dans « Versions précédentes ».')) return;
+      pushSnapshot();
       state.entries = incoming;
       if (Array.isArray(data.categories) && data.categories.length) {
         state.categories = data.categories.filter(c => typeof c === 'string' && c.trim());
@@ -657,8 +866,11 @@ $('#fileImport').addEventListener('change', ev => {
 });
 
 $('#btnReset').addEventListener('click', () => {
-  if (!confirm('Effacer tous les achats enregistrés ? Cette action est définitive.')) return;
+  if (!confirm('Effacer tous les achats enregistrés ?\nUne copie est conservée dans « Versions précédentes » pour pouvoir revenir en arrière.')) return;
+  pushSnapshot();
+  const keptSettings = state.settings;
   state = blankState();
+  state.settings = keptSettings;
   saveState();
   selectedCategory = null;
   stopEditing();
@@ -673,11 +885,13 @@ function renderAll() {
   renderToday();
   renderHistory();
   renderStats();
+  renderBackupPanel();
   updateLiveTotal();
 }
 
 $('#fDate').value = todayISO();
 renderAll();
+ensurePersistentStorage();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

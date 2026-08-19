@@ -29,7 +29,8 @@ catégories achetées le même jour.
 **Onglet Historique**
 - tous les achats regroupés par jour, du plus récent au plus ancien, avec le total de chaque jour ;
 - **modification** (✎) et **suppression** (🗑) de chaque ligne ;
-- **export CSV** (ouvrable dans Excel / Numbers), **sauvegarde JSON** et **restauration**.
+- la carte **Sauvegarde automatique** (voir plus bas) ;
+- **export CSV** (ouvrable dans Excel / Numbers), sauvegarde immédiate et restauration d'un fichier.
 
 **Onglet Stats**
 - filtre de période : *tout* / *30 derniers jours* / *7 derniers jours* ;
@@ -49,14 +50,22 @@ en plein écran, comme une vraie application, **même sans réseau**.
 
 ### 1. Mettre les fichiers en ligne (une seule fois, sur ordinateur)
 
-Le plus simple est **GitHub Pages** :
+Le dépôt contient un déploiement automatique : `.github/workflows/pages.yml` publie l'appli sur
+**GitHub Pages** à chaque envoi de code sur la branche par défaut. Une seule condition, à remplir
+une fois :
 
-1. sur GitHub, ouvrir ce dépôt → **Settings** → **Pages** ;
-2. dans *Build and deployment*, choisir **Deploy from a branch** ;
-3. sélectionner la branche `claude/oyster-tracking-app-s6imu9` (ou `main` après fusion),
-   dossier `/ (root)`, puis **Save** ;
-4. après une minute, l'adresse s'affiche en haut de la page :
-   `https://pepetechia.github.io/Huitres-il-de-re/`
+- **GitHub Pages doit être disponible pour ce dépôt.** Il est aujourd'hui *privé*, et Pages n'est
+  proposé sur un dépôt privé qu'avec un abonnement GitHub Pro. Deux solutions :
+  - **rendre le dépôt public** : *Settings* → tout en bas *Danger Zone* → **Change visibility** →
+    *Public* (le code ne contient aucune donnée personnelle : vos achats restent sur le téléphone) ;
+  - ou **garder le dépôt privé avec GitHub Pro**.
+- Ensuite : onglet **Actions** → *Déploiement GitHub Pages* → **Run workflow**. Le workflow active
+  Pages tout seul et publie l'appli.
+
+L'adresse obtenue, à ouvrir sur le téléphone :
+`https://pepetechia.github.io/Huitres-il-de-re/`
+
+Chaque modification poussée sur la branche par défaut est ensuite publiée automatiquement.
 
 ### 2. Ajouter l'appli à l'écran d'accueil (sur le téléphone)
 
@@ -81,18 +90,40 @@ mais le mode hors-ligne ne s'active qu'en `http(s)://`.)
 
 ---
 
-## Vos données
+## Sauvegarde : rien à faire
 
-- Elles sont enregistrées dans le **stockage local du navigateur du téléphone**
-  (clé `huitres-ile-de-re.v1`), et ne partent nulle part : aucun serveur, aucun compte.
-- Conséquence : elles sont liées à ce téléphone et à ce navigateur. Si vous effacez les données
-  de navigation ou changez de téléphone, elles sont perdues.
-- D'où les boutons **Sauvegarde (JSON)** et **Restaurer** dans l'onglet *Historique* :
-  un fichier de sauvegarde de temps en temps (à la fin des vacances par exemple) permet de
-  tout retrouver ailleurs.
-- **Exporter en CSV** donne un tableau `Date ; Catégorie ; Douzaines ; Demi-douzaines ;
-  Total douzaines ; Nb huîtres ; Note`, séparé par des points-virgules et encodé en UTF-8
-  avec BOM — il s'ouvre directement dans Excel en français.
+Il n'y a **aucun bouton à presser pour sauvegarder**. Trois protections se déclenchent toutes seules.
+
+**1. Enregistrement immédiat.** Dès l'appui sur *Enregistrer l'achat*, la donnée est écrite dans
+le stockage du téléphone — sans réseau, sans compte. La ligne sous le bouton le confirme :
+*« Enregistré automatiquement à 14:32 sur ce téléphone. »* L'appli demande aussi au navigateur de
+**protéger ces données** (`navigator.storage.persist()`) pour qu'il ne les efface pas de lui-même
+quand la mémoire du téléphone se remplit.
+
+**2. Fichier de sauvegarde automatique.** Sans rien demander, l'appli écrit un fichier
+`huitres-sauvegarde-AAAA-MM-JJ.json` dans vos téléchargements — lui-même repris par la sauvegarde
+iCloud ou Google Drive du téléphone. Le rythme se règle dans l'onglet *Historique* :
+
+| Réglage | Effet |
+|---|---|
+| **À chaque enregistrement** | un fichier après chaque achat saisi |
+| **Une fois par jour** *(par défaut)* | un fichier au premier achat de la journée |
+| **Désactivé** | aucun fichier automatique |
+
+**3. Versions précédentes.** Avant chaque ajout, modification, suppression, restauration ou
+effacement, l'appli garde une **copie horodatée** de l'état précédent (les 12 dernières).
+Elles sont listées dans l'onglet *Historique* avec un bouton **Restaurer** : une ligne supprimée
+par erreur, ou même un « Tout effacer » malheureux, se rattrape en deux appuis.
+
+### Et si je change de téléphone ?
+
+Les données appartiennent au navigateur de ce téléphone : elles ne partent sur aucun serveur.
+Pour les déplacer, prenez le dernier fichier `huitres-sauvegarde-….json` et utilisez
+**Restaurer un fichier** sur le nouveau téléphone.
+
+**Exporter en CSV** donne par ailleurs un tableau `Date ; Catégorie ; Douzaines ; Demi-douzaines ;
+Total douzaines ; Nb huîtres ; Note`, séparé par des points-virgules et encodé en UTF-8 avec BOM —
+il s'ouvre directement dans Excel en français.
 
 ---
 
@@ -102,11 +133,12 @@ mais le mode hors-ligne ne s'active qu'en `http(s)://`.)
 |---|---|
 | `index.html` | structure de l'appli (3 onglets) |
 | `app.css` | mise en forme mobile, thème clair **et** sombre automatique |
-| `app.js` | logique : saisie, historique, statistiques, export/import, stockage local |
+| `app.js` | logique : saisie, historique, statistiques, sauvegardes automatiques, stockage local |
 | `sw.js` | *service worker* : mise en cache pour le fonctionnement hors connexion |
 | `manifest.webmanifest` | déclaration PWA (nom, icônes, couleurs, plein écran) |
 | `icons/` | icônes de l'application (180/192/512 px + version *maskable* Android) |
 | `docs/` | captures d'écran du README |
+| `.github/workflows/pages.yml` | publication automatique sur GitHub Pages à chaque envoi de code |
 
 Aucune dépendance, aucun compte, aucune étape de compilation : du HTML, du CSS et du
 JavaScript standard.

@@ -1,0 +1,47 @@
+# Publie l'appli sur GitHub Pages à chaque envoi de code sur la branche par défaut.
+# L'adresse obtenue est celle à ouvrir sur le téléphone pour installer l'appli.
+name: Déploiement GitHub Pages
+
+on:
+  push:
+    branches: [claude/oyster-tracking-app-s6imu9]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Préparer les fichiers du site
+        run: |
+          mkdir -p _site
+          cp index.html app.css app.js sw.js manifest.webmanifest _site/
+          cp -r icons _site/
+
+      - name: Configurer GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Envoyer le site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Déployer
+        id: deploiement
+        uses: actions/deploy-pages@v4

@@ -240,3 +240,29 @@ input:focus-visible,button:focus-visible{outline:2.5px solid var(--sea-500); out
   .steppers{grid-template-columns:1fr 1fr}
   .form-actions{grid-auto-flow:column}
 }
+
+/* ---------- Sauvegarde automatique ---------- */
+.save-state{
+  margin:0; font-size:.8rem; color:var(--text-soft);
+  display:flex; align-items:center; gap:7px; line-height:1.35;
+}
+.form-actions + .save-state{margin-top:11px; justify-content:center}
+.save-state::before{
+  content:""; flex:0 0 auto; width:8px; height:8px; border-radius:50%;
+  background:var(--sea-500); box-shadow:0 0 0 3px rgba(15,132,147,.18);
+}
+.save-state.is-warn::before{background:var(--sand); box-shadow:0 0 0 3px rgba(246,179,82,.2)}
+.save-state.is-err::before{background:var(--danger); box-shadow:0 0 0 3px rgba(192,57,43,.18)}
+#storageState{margin-bottom:14px}
+#autoBackupState{margin-top:9px}
+
+.snaps{display:grid; gap:7px}
+.snap{
+  display:flex; align-items:center; gap:10px;
+  background:var(--surface-2); border:1px solid var(--line);
+  border-radius:var(--radius-sm); padding:9px 11px;
+}
+.snap__main{flex:1 1 auto; min-width:0}
+.snap__when{font-size:.86rem; font-weight:600}
+.snap__what{font-size:.77rem; color:var(--text-soft); margin-top:2px}
+.snap .btn{flex:0 0 auto}
