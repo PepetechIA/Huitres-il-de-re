@@ -1,5 +1,9 @@
 # Publie l'appli sur GitHub Pages à chaque envoi de code sur la branche par défaut.
 # L'adresse obtenue est celle à ouvrir sur le téléphone pour installer l'appli.
+#
+# Si GitHub Pages n'est pas encore disponible pour ce dépôt (dépôt privé sans
+# abonnement GitHub Pro), le déploiement est simplement ignoré avec un message
+# d'explication, sans faire échouer le workflow.
 name: Déploiement GitHub Pages
 
 on:
@@ -33,15 +37,49 @@ jobs:
           cp -r icons _site/
 
       - name: Configurer GitHub Pages
+        id: pages
+        continue-on-error: true
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
+      - name: Pages indisponible — marche à suivre
+        if: steps.pages.outcome != 'success'
+        run: |
+          {
+            echo "## Déploiement ignoré : GitHub Pages n'est pas activable"
+            echo ""
+            echo "GitHub Pages n'est pas disponible pour un dépôt **privé** sans abonnement GitHub Pro."
+            echo ""
+            echo "Pour publier l'appli, au choix :"
+            echo ""
+            echo "1. **Rendre le dépôt public** : *Settings* → *Danger Zone* → **Change visibility** → *Public*."
+            echo "   Le code ne contient aucune donnée personnelle : les achats restent sur le téléphone."
+            echo "2. Ou **passer le compte en GitHub Pro** et garder le dépôt privé."
+            echo ""
+            echo "Puis relancer ce workflow : onglet **Actions** → *Déploiement GitHub Pages* → **Run workflow**."
+            echo "Les envois de code suivants publieront l'appli automatiquement."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::GitHub Pages n'est pas activable sur ce dépôt privé : déploiement ignoré. Voir le résumé du workflow."
+
       - name: Envoyer le site
+        if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
       - name: Déployer
         id: deploiement
+        if: steps.pages.outcome == 'success'
         uses: actions/deploy-pages@v4
+
+      - name: Adresse de l'appli
+        if: steps.deploiement.outcome == 'success'
+        run: |
+          {
+            echo "## Appli publiée 🦪"
+            echo ""
+            echo "Adresse à ouvrir sur le téléphone : ${{ steps.deploiement.outputs.page_url }}"
+            echo ""
+            echo "Puis *Partager → Sur l'écran d'accueil* (iPhone) ou *⋮ → Ajouter à l'écran d'accueil* (Android)."
+          } >> "$GITHUB_STEP_SUMMARY"
