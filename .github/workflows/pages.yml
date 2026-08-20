@@ -1,9 +1,5 @@
 # Publie l'appli sur GitHub Pages à chaque envoi de code sur la branche par défaut.
 # L'adresse obtenue est celle à ouvrir sur le téléphone pour installer l'appli.
-#
-# Si GitHub Pages n'est pas encore disponible pour ce dépôt (dépôt privé sans
-# abonnement GitHub Pro), le déploiement est simplement ignoré avec un message
-# d'explication, sans faire échouer le workflow.
 name: Déploiement GitHub Pages
 
 on:
@@ -23,11 +19,11 @@ concurrency:
 jobs:
   deployer:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Préparer les fichiers du site
         run: |
@@ -35,35 +31,30 @@ jobs:
           cp index.html app.css app.js sw.js manifest.webmanifest _site/
           cp -r icons _site/
 
-      - name: Déployer sur GitHub Pages
+      - name: Envoyer le site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Déployer
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Déploiement manuel si nécessaire
+        if: steps.deployment.outcome != 'success'
         run: |
-          # Configurer git
+          cd _site
+
+          # Initialiser un repo temporaire
+          git init
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-
-          # Créer une branche gh-pages vierge si elle n'existe pas
-          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
-            # La branche existe déjà, la basculer
-            git checkout gh-pages
-            git reset --hard origin/gh-pages
-          else
-            # Créer une nouvelle branche orpheline
-            git checkout --orphan gh-pages
-          fi
-
-          # Effacer tout le contenu existant
-          find . -maxdepth 1 -not -name '.git' -not -name '.' -exec rm -rf {} + || true
-
-          # Copier les fichiers du site
-          cp -r _site/* .
-
-          # S'assurer que .gitkeep existe pour que le dossier soit reconnu
-          touch .gitkeep
-
-          # Commiter et pousser
           git add .
-          git commit -m "Déployer l'appli" || echo "Rien à commiter"
-          git push --set-upstream origin gh-pages --force
+          git commit -m "Appli Mes Huîtres - $(date -u +'%Y-%m-%d %H:%M:%S')"
+
+          # Forcer le push sur gh-pages
+          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:gh-pages
 
       - name: Adresse de l'appli
         run: |
