@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -41,17 +41,29 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          # Créer ou basculer sur la branche gh-pages
-          git checkout --orphan gh-pages 2>/dev/null || git checkout gh-pages
-          git rm -rf . 2>/dev/null || true
+          # Créer une branche gh-pages vierge si elle n'existe pas
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            # La branche existe déjà, la basculer
+            git checkout gh-pages
+            git reset --hard origin/gh-pages
+          else
+            # Créer une nouvelle branche orpheline
+            git checkout --orphan gh-pages
+          fi
+
+          # Effacer tout le contenu existant
+          find . -maxdepth 1 -not -name '.git' -not -name '.' -exec rm -rf {} + || true
 
           # Copier les fichiers du site
           cp -r _site/* .
 
+          # S'assurer que .gitkeep existe pour que le dossier soit reconnu
+          touch .gitkeep
+
           # Commiter et pousser
           git add .
           git commit -m "Déployer l'appli" || echo "Rien à commiter"
-          git push -u origin gh-pages --force
+          git push --set-upstream origin gh-pages --force
 
       - name: Adresse de l'appli
         run: |
