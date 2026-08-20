@@ -27,21 +27,61 @@ function blankState() {
   return {
     entries: [],
     categories: DEFAULT_CATEGORIES.slice(),
-    categoryPrices: {},
+    /* Historique de prix par catégorie : { "Fine de claire": [{date, price}, ...] }, trié par date croissante.
+       Le prix appliqué à un achat est celui du point le plus récent à sa date ou avant — jamais
+       calculé « aujourd'hui », toujours recalculé à partir de la date de l'achat lui-même. */
+    priceHistory: {},
     lastCategory: null,
     settings: { autoBackup: 'daily', lastBackupAt: null }
   };
 }
 
-/** Ne garde que les entrées {catégorie: prix} valides d'un objet quelconque. */
-function sanitizePrices(obj) {
+/** Ne garde que les points {date, price} valides d'un historique de prix quelconque. */
+function sanitizePriceHistory(obj) {
   const out = {};
   if (!obj || typeof obj !== 'object') return out;
   Object.keys(obj).forEach(cat => {
-    const v = Number(obj[cat]);
-    if (cat.trim() && isFinite(v) && v >= 0) out[cat.trim()] = Math.round(v * 100) / 100;
+    if (!cat.trim() || !Array.isArray(obj[cat])) return;
+    const points = obj[cat]
+      .filter(p => p && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && isFinite(Number(p.price)) && Number(p.price) > 0)
+      .map(p => ({ date: p.date, price: Math.round(Number(p.price) * 100) / 100 }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (points.length) out[cat.trim()] = points;
   });
   return out;
+}
+
+/**
+ * Migration depuis l'ancien format (un seul prix « courant » par catégorie, sans date).
+ * Reconstruit un historique à partir du prix figé sur chaque achat déjà enregistré (converti en
+ * point à sa propre date), plus le prix courant comme valeur de repli depuis le tout début.
+ */
+function migrateFlatPrices(flat, rawEntries) {
+  const byCategoryDate = {};
+  Object.keys(flat || {}).forEach(cat => {
+    const v = Number(flat[cat]);
+    if (!cat.trim() || !isFinite(v) || v <= 0) return;
+    byCategoryDate[cat] = byCategoryDate[cat] || {};
+    byCategoryDate[cat]['0001-01-01'] = Math.round(v * 100) / 100;
+  });
+  (rawEntries || []).forEach(e => {
+    const price = Number(e.pricePerDozen);
+    if (!isFinite(price) || price <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return;
+    const cat = (typeof e.category === 'string' && e.category.trim()) ? e.category.trim() : 'Autre';
+    byCategoryDate[cat] = byCategoryDate[cat] || {};
+    byCategoryDate[cat][e.date] = Math.round(price * 100) / 100;
+  });
+  const history = {};
+  Object.keys(byCategoryDate).forEach(cat => {
+    const cleaned = [];
+    Object.keys(byCategoryDate[cat]).sort().forEach(date => {
+      const price = byCategoryDate[cat][date];
+      const prev = cleaned[cleaned.length - 1];
+      if (!prev || prev.price !== price) cleaned.push({ date, price });
+    });
+    history[cat] = cleaned;
+  });
+  return history;
 }
 
 function loadState() {
@@ -50,13 +90,16 @@ function loadState() {
     if (!raw) return blankState();
     const data = JSON.parse(raw);
     const state = blankState();
-    if (Array.isArray(data.entries)) {
-      state.entries = data.entries.filter(isValidEntry).map(normalizeEntry);
-    }
+    const rawEntries = Array.isArray(data.entries) ? data.entries.filter(isValidEntry) : [];
+    state.entries = rawEntries.map(normalizeEntry);
     if (Array.isArray(data.categories) && data.categories.length) {
       state.categories = data.categories.filter(c => typeof c === 'string' && c.trim()).map(c => c.trim());
     }
-    state.categoryPrices = sanitizePrices(data.categoryPrices);
+    if (data.priceHistory && typeof data.priceHistory === 'object') {
+      state.priceHistory = sanitizePriceHistory(data.priceHistory);
+    } else if (data.categoryPrices && typeof data.categoryPrices === 'object') {
+      state.priceHistory = migrateFlatPrices(data.categoryPrices, rawEntries);
+    }
     if (typeof data.lastCategory === 'string') state.lastCategory = data.lastCategory;
     if (data.settings && typeof data.settings === 'object') {
       if (BACKUP_MODES.includes(data.settings.autoBackup)) {
@@ -73,6 +116,18 @@ function loadState() {
   }
 }
 
+/** Historique de prix depuis les données d'une sauvegarde/version quelconque (nouveau ou ancien format). */
+function priceHistoryFrom(data) {
+  if (!data) return {};
+  if (data.priceHistory && typeof data.priceHistory === 'object') {
+    return sanitizePriceHistory(data.priceHistory);
+  }
+  if (data.categoryPrices && typeof data.categoryPrices === 'object') {
+    return migrateFlatPrices(data.categoryPrices, (data.entries || []).filter(isValidEntry));
+  }
+  return {};
+}
+
 function isValidEntry(e) {
   return e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date);
 }
@@ -84,9 +139,7 @@ function normalizeEntry(e) {
     category: (typeof e.category === 'string' && e.category.trim()) ? e.category.trim() : 'Autre',
     dozens: clampInt(e.dozens),
     half: clampInt(e.half),
-    note: typeof e.note === 'string' ? e.note.slice(0, 80) : '',
-    /* Prix figé au moment de l'achat : un prix modifié plus tard ne change pas le coût déjà enregistré. */
-    pricePerDozen: clampPrice(e.pricePerDozen)
+    note: typeof e.note === 'string' ? e.note.slice(0, 80) : ''
   };
 }
 
@@ -94,12 +147,6 @@ function clampInt(v) {
   const n = Math.floor(Number(v));
   if (!isFinite(n) || n < 0) return 0;
   return Math.min(n, 999);
-}
-
-function clampPrice(v) {
-  const n = Number(v);
-  if (!isFinite(n) || n < 0) return 0;
-  return Math.round(n * 100) / 100;
 }
 
 function makeId() {
@@ -165,7 +212,7 @@ function pushSnapshot() {
   if (!state.entries.length) return; // rien à conserver : pas de version vide dans la liste
   try {
     const snaps = loadSnapshots();
-    const payload = { entries: state.entries, categories: state.categories, categoryPrices: state.categoryPrices };
+    const payload = { entries: state.entries, categories: state.categories, priceHistory: state.priceHistory };
     const last = snaps[0];
     if (last && JSON.stringify(last.data) === JSON.stringify(payload)) return;
     snaps.unshift({ at: new Date().toISOString(), data: payload });
@@ -208,7 +255,7 @@ function restoreSnapshot(at) {
   if (Array.isArray(snap.data.categories) && snap.data.categories.length) {
     state.categories = snap.data.categories.slice();
   }
-  state.categoryPrices = sanitizePrices(snap.data.categoryPrices);
+  state.priceHistory = priceHistoryFrom(snap.data);
   selectedCategory = null;
   saveState();
   renderAll();
@@ -256,8 +303,40 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 const dozensOf = e => e.dozens + e.half * 0.5;
 /** Nombre d'huîtres */
 const oystersOf = e => e.dozens * 12 + e.half * 6;
-/** Coût de l'achat, au prix par douzaine enregistré avec lui (0 si non renseigné) */
-const costOf = e => dozensOf(e) * (e.pricePerDozen || 0);
+
+/**
+ * Prix à la douzaine d'une catégorie, à une date donnée : le point d'historique le plus récent
+ * à cette date ou avant. 0 si aucun prix n'était encore connu à cette date (jamais de prix
+ * futur appliqué rétroactivement).
+ */
+function priceAt(category, dateISO) {
+  const points = state.priceHistory[category];
+  if (!points || !points.length) return 0;
+  let best = 0;
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].date <= dateISO) best = points[i].price;
+    else break; // points triés par date croissante
+  }
+  return best;
+}
+
+/** Coût de l'achat, au prix en vigueur pour sa catégorie à sa date d'achat (recalculé, jamais figé). */
+const costOf = e => dozensOf(e) * priceAt(e.category, e.date);
+
+function setPricePoint(cat, date, price) {
+  const rounded = Math.round(price * 100) / 100;
+  const points = (state.priceHistory[cat] || []).filter(p => p.date !== date);
+  points.push({ date, price: rounded });
+  state.priceHistory[cat] = points.sort((a, b) => a.date.localeCompare(b.date));
+  saveState();
+}
+
+function removePricePoint(cat, date) {
+  if (!state.priceHistory[cat]) return;
+  state.priceHistory[cat] = state.priceHistory[cat].filter(p => p.date !== date);
+  if (!state.priceHistory[cat].length) delete state.priceHistory[cat];
+  saveState();
+}
 
 function fmtNum(n) {
   const rounded = Math.round(n * 100) / 100;
@@ -397,14 +476,15 @@ function removeCategory(cat) {
     : 'Retirer « ' + cat + ' » de la liste ?';
   if (!confirm(msg)) return;
   state.categories = state.categories.filter(c => c !== cat);
-  delete state.categoryPrices[cat];
+  /* L'historique de prix de la catégorie est conservé : les achats déjà enregistrés sous ce nom
+     gardent leur coût correct, même si la catégorie n'est plus proposée à la saisie. */
   if (selectedCategory === cat) selectedCategory = null;
   saveState();
   renderCategories();
   renderCategoryPrices();
 }
 
-/* ---------------- Prix par douzaine, par catégorie ---------------- */
+/* ---------------- Prix par douzaine, par catégorie (avec historique daté) ---------------- */
 
 function renderCategoryPrices() {
   const box = $('#catPriceList');
@@ -414,49 +494,93 @@ function renderCategoryPrices() {
     box.innerHTML = '<p class="muted small" style="margin:0">Ajoutez d\'abord une catégorie dans l\'onglet Saisie.</p>';
     return;
   }
-  state.categories.forEach(cat => {
-    const row = document.createElement('div');
-    row.className = 'price-row';
+  state.categories.forEach(cat => box.appendChild(categoryPriceCard(cat)));
+}
 
-    const name = document.createElement('span');
-    name.className = 'price-row__name';
-    name.textContent = cat;
+function categoryPriceCard(cat) {
+  const card = document.createElement('div');
+  card.className = 'price-cat';
 
-    const wrap = document.createElement('div');
-    wrap.className = 'price-row__input';
+  const head = document.createElement('div');
+  head.className = 'price-cat__head';
+  const name = document.createElement('span');
+  name.className = 'price-cat__name';
+  name.textContent = cat;
+  const current = document.createElement('span');
+  current.className = 'price-cat__current';
+  const currentPrice = priceAt(cat, todayISO());
+  current.textContent = currentPrice > 0 ? fmtEUR(currentPrice) + ' actuellement' : 'Aucun prix';
+  head.appendChild(name);
+  head.appendChild(current);
+  card.appendChild(head);
 
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.min = '0';
-    input.step = '0.10';
-    input.inputMode = 'decimal';
-    input.placeholder = '0,00';
-    input.setAttribute('aria-label', 'Prix à la douzaine pour ' + cat);
-    if (state.categoryPrices[cat]) input.value = state.categoryPrices[cat];
+  const addRow = document.createElement('div');
+  addRow.className = 'price-cat__add';
 
-    input.addEventListener('change', () => {
-      const val = parseFloat(input.value);
-      if (isFinite(val) && val > 0) {
-        state.categoryPrices[cat] = Math.round(val * 100) / 100;
-      } else {
-        delete state.categoryPrices[cat];
-      }
-      input.value = state.categoryPrices[cat] || '';
-      saveState();
-      renderStats();
-      updateLiveTotal();
-    });
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = todayISO();
+  dateInput.setAttribute('aria-label', "Prix en vigueur à partir de cette date, pour " + cat);
 
-    const suffix = document.createElement('span');
-    suffix.className = 'price-row__suffix';
-    suffix.textContent = '€ / douz.';
+  const priceInput = document.createElement('input');
+  priceInput.type = 'number';
+  priceInput.min = '0';
+  priceInput.step = '0.10';
+  priceInput.inputMode = 'decimal';
+  priceInput.placeholder = 'Prix';
+  priceInput.setAttribute('aria-label', 'Prix à la douzaine pour ' + cat);
 
-    wrap.appendChild(input);
-    wrap.appendChild(suffix);
-    row.appendChild(name);
-    row.appendChild(wrap);
-    box.appendChild(row);
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'btn btn--ghost btn--sm';
+  addBtn.textContent = 'Enregistrer ce prix';
+  addBtn.addEventListener('click', () => {
+    const val = parseFloat(priceInput.value);
+    if (!dateInput.value) return toast('Choisissez une date');
+    if (!isFinite(val) || val <= 0) return toast('Indiquez un prix');
+    setPricePoint(cat, dateInput.value, val);
+    priceInput.value = '';
+    renderCategoryPrices();
+    renderStats();
+    updateLiveTotal();
+    toast('Prix enregistré');
   });
+
+  addRow.appendChild(dateInput);
+  addRow.appendChild(priceInput);
+  addRow.appendChild(addBtn);
+  card.appendChild(addRow);
+
+  const points = (state.priceHistory[cat] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  if (points.length) {
+    const list = document.createElement('ul');
+    list.className = 'price-cat__history';
+    points.forEach(p => {
+      const li = document.createElement('li');
+      const lbl = document.createElement('span');
+      lbl.textContent = 'Depuis le ' + fmtDateShort(p.date);
+      const val = document.createElement('b');
+      val.textContent = fmtEUR(p.price);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'price-cat__del';
+      del.textContent = '×';
+      del.title = 'Supprimer ce prix';
+      del.addEventListener('click', () => {
+        removePricePoint(cat, p.date);
+        renderCategoryPrices();
+        renderStats();
+        updateLiveTotal();
+      });
+      li.appendChild(lbl);
+      li.appendChild(val);
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+    card.appendChild(list);
+  }
+
+  return card;
 }
 
 $('#btnAddCat').addEventListener('click', addCategory);
@@ -483,12 +607,16 @@ function formQty() {
   return { dozens: clampInt($('#fDozens').value), half: clampInt($('#fHalf').value) };
 }
 
+/* Le prix dépend de la date choisie : recalculer l'estimation si elle change (rattrapage d'un achat passé). */
+$('#fDate').addEventListener('input', updateLiveTotal);
+
 function updateLiveTotal() {
   const q = formQty();
   const doz = dozensOf(q);
   const oy = oystersOf(q);
   let txt = fmtDozens(doz) + ' · ' + fmtNum(oy) + ' ' + plural(oy, 'huître', 'huîtres');
-  const price = selectedCategory ? (state.categoryPrices[selectedCategory] || 0) : 0;
+  const dateVal = $('#fDate').value || todayISO();
+  const price = selectedCategory ? priceAt(selectedCategory, dateVal) : 0;
   if (price > 0) txt += ' · environ ' + fmtEUR(doz * price);
   $('#liveTotal').textContent = txt;
 }
@@ -509,16 +637,13 @@ $('#entryForm').addEventListener('submit', ev => {
   const date = $('#fDate').value || todayISO();
   pushSnapshot();
 
-  const pricePerDozen = state.categoryPrices[selectedCategory] || 0;
-
   if (editingId) {
     const entry = state.entries.find(e => e.id === editingId);
     if (entry) {
       Object.assign(entry, {
         date, category: selectedCategory,
         dozens: q.dozens, half: q.half,
-        note: $('#fNote').value.trim().slice(0, 80),
-        pricePerDozen
+        note: $('#fNote').value.trim().slice(0, 80)
       });
     }
     stopEditing();
@@ -528,8 +653,7 @@ $('#entryForm').addEventListener('submit', ev => {
     state.entries.push(normalizeEntry({
       date, category: selectedCategory,
       dozens: q.dozens, half: q.half,
-      note: $('#fNote').value.trim(),
-      pricePerDozen
+      note: $('#fNote').value.trim()
     }));
     toast('Achat enregistré 🦪');
     resetForm(date);
@@ -653,7 +777,7 @@ function renderHistory() {
       if (e.dozens) parts.push(e.dozens + ' × 12');
       if (e.half) parts.push(e.half + ' × 6');
       const meta = parts.join(' + ') + ' = ' + fmtNum(oystersOf(e)) + ' ' + plural(oystersOf(e), 'huître', 'huîtres') +
-        (e.pricePerDozen ? ' · ' + fmtEUR(costOf(e)) : '') +
+        (costOf(e) > 0 ? ' · ' + fmtEUR(costOf(e)) : '') +
         (e.note ? ' · ' + e.note : '');
 
       row.innerHTML =
@@ -868,7 +992,7 @@ $('#btnExportCsv').addEventListener('click', () => {
   if (!state.entries.length) return toast('Rien à exporter');
   const rows = [['Date', 'Categorie', 'Douzaines', 'Demi-douzaines', 'Total douzaines', 'Nb huitres', 'Prix/douzaine', 'Cout', 'Note']];
   state.entries.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-    rows.push([e.date, e.category, e.dozens, e.half, dozensOf(e), oystersOf(e), e.pricePerDozen || 0, costOf(e), e.note || '']);
+    rows.push([e.date, e.category, e.dozens, e.half, dozensOf(e), oystersOf(e), priceAt(e.category, e.date), costOf(e), e.note || '']);
   });
   const csv = rows.map(r => r.map(cell => {
     const s = String(cell);
@@ -956,7 +1080,7 @@ $('#fileImport').addEventListener('change', ev => {
       if (Array.isArray(data.categories) && data.categories.length) {
         state.categories = data.categories.filter(c => typeof c === 'string' && c.trim());
       }
-      state.categoryPrices = sanitizePrices(data.categoryPrices);
+      state.priceHistory = priceHistoryFrom(data);
       saveState();
       selectedCategory = null;
       renderAll();

@@ -47,14 +47,24 @@ catégories achetées le même jour.
 ### Prix par douzaine et coût des achats
 
 Dans l'onglet *Historique*, la carte **Prix par douzaine** permet d'indiquer, pour chaque
-catégorie, le prix d'une douzaine. C'est facultatif : une catégorie sans prix est simplement
-ignorée dans les calculs de coût.
+catégorie, un prix **à partir d'une date donnée**. C'est facultatif : une catégorie sans prix est
+simplement ignorée dans les calculs de coût.
 
-Le prix est **figé sur chaque achat au moment de l'enregistrement** : si vous changez le prix
-d'une catégorie plus tard (par exemple parce qu'il a augmenté au fil du séjour), les achats déjà
-enregistrés gardent leur coût réel, seuls les nouveaux achats utilisent le nouveau prix. L'onglet
-*Saisie* affiche une estimation du coût en direct pendant la saisie, dès qu'un prix est renseigné
-pour la catégorie choisie.
+Le coût de chaque achat est calculé avec le prix qui était **en vigueur à la date de cet achat**,
+pas avec le prix actuel. Concrètement :
+
+- si le prix d'une catégorie change en cours de séjour, ajoutez un nouveau prix daté du jour du
+  changement : les achats antérieurs gardent l'ancien prix, les achats à partir de cette date
+  utilisent le nouveau — aucun besoin de modifier les achats déjà enregistrés ;
+- pour appliquer un prix à des achats déjà passés (par exemple si vous configurez cette
+  fonctionnalité après plusieurs jours de vacances), choisissez une date de prix antérieure à ces
+  achats (le premier jour du séjour, par exemple) ;
+- un achat dont la date est antérieure à tout prix connu pour sa catégorie n'a pas de coût calculé
+  (0 €), plutôt que d'appliquer par erreur un prix qui n'était pas encore en vigueur.
+
+L'onglet *Saisie* affiche une estimation du coût en direct dès qu'un prix est connu pour la
+catégorie choisie **à la date sélectionnée dans le formulaire** — utile pour rattraper un achat
+passé sans se tromper de tarif.
 
 ---
 
