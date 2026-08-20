@@ -275,6 +275,23 @@ input:focus-visible,button:focus-visible{outline:2.5px solid var(--sea-500); out
 #storageState{margin-bottom:14px}
 #autoBackupState{margin-top:9px}
 
+/* ---------------- Prix par douzaine ---------------- */
+.cat-prices{display:grid; gap:8px; margin-top:10px}
+.price-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--surface-2); border:1px solid var(--line);
+  border-radius:var(--radius-sm); padding:9px 11px;
+}
+.price-row__name{
+  font-weight:600; font-size:.92rem; flex:1 1 auto; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.price-row__input{display:flex; align-items:center; gap:7px; flex:0 0 auto}
+.price-row__input input[type=number]{
+  width:76px; padding:8px 9px; font-size:.95rem; text-align:right;
+}
+.price-row__suffix{font-size:.76rem; color:var(--text-soft); white-space:nowrap}
+
 .snaps{display:grid; gap:7px}
 .snap{
   display:flex; align-items:center; gap:10px;

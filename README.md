@@ -29,17 +29,32 @@ catégories achetées le même jour.
 **Onglet Historique**
 - tous les achats regroupés par jour, du plus récent au plus ancien, avec le total de chaque jour ;
 - **modification** (✎) et **suppression** (🗑) de chaque ligne ;
+- la carte **Prix par douzaine** : un prix par catégorie, pour calculer le coût des achats
+  (voir plus bas) ;
 - la carte **Sauvegarde automatique** (voir plus bas) ;
 - **export CSV** (ouvrable dans Excel / Numbers), sauvegarde immédiate et restauration d'un fichier.
 
 **Onglet Stats**
 - filtre de période : *tout* / *30 derniers jours* / *7 derniers jours* ;
-- 4 indicateurs : total en douzaines, nombre d'huîtres, nombre d'achats, moyenne par jour d'achat ;
+- indicateurs : total en douzaines, nombre d'huîtres, nombre d'achats, moyenne par jour d'achat,
+  et **total dépensé** si un prix est renseigné ;
 - **histogramme des douzaines par jour** (le meilleur jour ressort en orange) ;
-- **répartition par catégorie** (en douzaines et en %) ;
+- **répartition par catégorie** (en douzaines, en % et en euros) ;
 - **répartition douzaines / demi-douzaines** ;
 - **records** : meilleur jour, catégorie préférée, jours avec achat, moyenne par achat, rythme
-  en huîtres par jour.
+  en huîtres par jour, et prix moyen à la douzaine si un prix est renseigné.
+
+### Prix par douzaine et coût des achats
+
+Dans l'onglet *Historique*, la carte **Prix par douzaine** permet d'indiquer, pour chaque
+catégorie, le prix d'une douzaine. C'est facultatif : une catégorie sans prix est simplement
+ignorée dans les calculs de coût.
+
+Le prix est **figé sur chaque achat au moment de l'enregistrement** : si vous changez le prix
+d'une catégorie plus tard (par exemple parce qu'il a augmenté au fil du séjour), les achats déjà
+enregistrés gardent leur coût réel, seuls les nouveaux achats utilisent le nouveau prix. L'onglet
+*Saisie* affiche une estimation du coût en direct pendant la saisie, dès qu'un prix est renseigné
+pour la catégorie choisie.
 
 ---
 
@@ -50,22 +65,16 @@ en plein écran, comme une vraie application, **même sans réseau**.
 
 ### 1. Mettre les fichiers en ligne (une seule fois, sur ordinateur)
 
-Le dépôt contient un déploiement automatique : `.github/workflows/pages.yml` publie l'appli sur
-**GitHub Pages** à chaque envoi de code sur la branche par défaut. Une seule condition, à remplir
-une fois :
+Le dépôt est public et publié via **GitHub Pages**, réglage à faire une seule fois :
 
-- **GitHub Pages doit être disponible pour ce dépôt.** Il est aujourd'hui *privé*, et Pages n'est
-  proposé sur un dépôt privé qu'avec un abonnement GitHub Pro. Deux solutions :
-  - **rendre le dépôt public** : *Settings* → tout en bas *Danger Zone* → **Change visibility** →
-    *Public* (le code ne contient aucune donnée personnelle : vos achats restent sur le téléphone) ;
-  - ou **garder le dépôt privé avec GitHub Pro**.
-- Ensuite : onglet **Actions** → *Déploiement GitHub Pages* → **Run workflow**. Le workflow active
-  Pages tout seul et publie l'appli.
+- *Settings* → **Pages** → sous *Build and deployment*, **Source : Deploy from a branch**,
+  **Branch** : la branche par défaut du dépôt, dossier **/ (root)** → **Save**.
 
 L'adresse obtenue, à ouvrir sur le téléphone :
 `https://pepetechia.github.io/Huitres-il-de-re/`
 
-Chaque modification poussée sur la branche par défaut est ensuite publiée automatiquement.
+Chaque modification poussée sur cette branche republie l'appli automatiquement (GitHub reconstruit
+le site à chaque envoi de code, sans étape supplémentaire).
 
 ### 2. Ajouter l'appli à l'écran d'accueil (sur le téléphone)
 
@@ -122,8 +131,8 @@ Pour les déplacer, prenez le dernier fichier `huitres-sauvegarde-….json` et u
 **Restaurer un fichier** sur le nouveau téléphone.
 
 **Exporter en CSV** donne par ailleurs un tableau `Date ; Catégorie ; Douzaines ; Demi-douzaines ;
-Total douzaines ; Nb huîtres ; Note`, séparé par des points-virgules et encodé en UTF-8 avec BOM —
-il s'ouvre directement dans Excel en français.
+Total douzaines ; Nb huîtres ; Prix/douzaine ; Coût ; Note`, séparé par des points-virgules et
+encodé en UTF-8 avec BOM — il s'ouvre directement dans Excel en français.
 
 ---
 
@@ -138,7 +147,6 @@ il s'ouvre directement dans Excel en français.
 | `manifest.webmanifest` | déclaration PWA (nom, icônes, couleurs, plein écran) |
 | `icons/` | icônes de l'application (180/192/512 px + version *maskable* Android) |
 | `docs/` | captures d'écran du README |
-| `.github/workflows/pages.yml` | publication automatique sur GitHub Pages à chaque envoi de code |
 
 Aucune dépendance, aucun compte, aucune étape de compilation : du HTML, du CSS et du
 JavaScript standard.

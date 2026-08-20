@@ -27,9 +27,21 @@ function blankState() {
   return {
     entries: [],
     categories: DEFAULT_CATEGORIES.slice(),
+    categoryPrices: {},
     lastCategory: null,
     settings: { autoBackup: 'daily', lastBackupAt: null }
   };
+}
+
+/** Ne garde que les entrées {catégorie: prix} valides d'un objet quelconque. */
+function sanitizePrices(obj) {
+  const out = {};
+  if (!obj || typeof obj !== 'object') return out;
+  Object.keys(obj).forEach(cat => {
+    const v = Number(obj[cat]);
+    if (cat.trim() && isFinite(v) && v >= 0) out[cat.trim()] = Math.round(v * 100) / 100;
+  });
+  return out;
 }
 
 function loadState() {
@@ -44,6 +56,7 @@ function loadState() {
     if (Array.isArray(data.categories) && data.categories.length) {
       state.categories = data.categories.filter(c => typeof c === 'string' && c.trim()).map(c => c.trim());
     }
+    state.categoryPrices = sanitizePrices(data.categoryPrices);
     if (typeof data.lastCategory === 'string') state.lastCategory = data.lastCategory;
     if (data.settings && typeof data.settings === 'object') {
       if (BACKUP_MODES.includes(data.settings.autoBackup)) {
@@ -71,7 +84,9 @@ function normalizeEntry(e) {
     category: (typeof e.category === 'string' && e.category.trim()) ? e.category.trim() : 'Autre',
     dozens: clampInt(e.dozens),
     half: clampInt(e.half),
-    note: typeof e.note === 'string' ? e.note.slice(0, 80) : ''
+    note: typeof e.note === 'string' ? e.note.slice(0, 80) : '',
+    /* Prix figé au moment de l'achat : un prix modifié plus tard ne change pas le coût déjà enregistré. */
+    pricePerDozen: clampPrice(e.pricePerDozen)
   };
 }
 
@@ -79,6 +94,12 @@ function clampInt(v) {
   const n = Math.floor(Number(v));
   if (!isFinite(n) || n < 0) return 0;
   return Math.min(n, 999);
+}
+
+function clampPrice(v) {
+  const n = Number(v);
+  if (!isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100) / 100;
 }
 
 function makeId() {
@@ -144,7 +165,7 @@ function pushSnapshot() {
   if (!state.entries.length) return; // rien à conserver : pas de version vide dans la liste
   try {
     const snaps = loadSnapshots();
-    const payload = { entries: state.entries, categories: state.categories };
+    const payload = { entries: state.entries, categories: state.categories, categoryPrices: state.categoryPrices };
     const last = snaps[0];
     if (last && JSON.stringify(last.data) === JSON.stringify(payload)) return;
     snaps.unshift({ at: new Date().toISOString(), data: payload });
@@ -187,6 +208,7 @@ function restoreSnapshot(at) {
   if (Array.isArray(snap.data.categories) && snap.data.categories.length) {
     state.categories = snap.data.categories.slice();
   }
+  state.categoryPrices = sanitizePrices(snap.data.categoryPrices);
   selectedCategory = null;
   saveState();
   renderAll();
@@ -234,10 +256,16 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 const dozensOf = e => e.dozens + e.half * 0.5;
 /** Nombre d'huîtres */
 const oystersOf = e => e.dozens * 12 + e.half * 6;
+/** Coût de l'achat, au prix par douzaine enregistré avec lui (0 si non renseigné) */
+const costOf = e => dozensOf(e) * (e.pricePerDozen || 0);
 
 function fmtNum(n) {
   const rounded = Math.round(n * 100) / 100;
   return rounded.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+}
+
+function fmtEUR(n) {
+  return (Math.round(n * 100) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 }
 
 function plural(n, one, many) {
@@ -298,7 +326,7 @@ function showView(name) {
   $$('.tab').forEach(t => t.classList.toggle('is-on', t.dataset.view === name));
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (name === 'stats') renderStats();
-  if (name === 'histo') renderHistory();
+  if (name === 'histo') { renderHistory(); renderCategoryPrices(); }
 }
 
 $$('.tab').forEach(tab => {
@@ -338,6 +366,7 @@ function renderCategories() {
     chip.addEventListener('click', () => {
       selectedCategory = cat;
       renderCategories();
+      updateLiveTotal();
     });
     box.appendChild(chip);
   });
@@ -358,6 +387,7 @@ function addCategory() {
   }
   input.value = '';
   renderCategories();
+  renderCategoryPrices();
 }
 
 function removeCategory(cat) {
@@ -367,9 +397,66 @@ function removeCategory(cat) {
     : 'Retirer « ' + cat + ' » de la liste ?';
   if (!confirm(msg)) return;
   state.categories = state.categories.filter(c => c !== cat);
+  delete state.categoryPrices[cat];
   if (selectedCategory === cat) selectedCategory = null;
   saveState();
   renderCategories();
+  renderCategoryPrices();
+}
+
+/* ---------------- Prix par douzaine, par catégorie ---------------- */
+
+function renderCategoryPrices() {
+  const box = $('#catPriceList');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!state.categories.length) {
+    box.innerHTML = '<p class="muted small" style="margin:0">Ajoutez d\'abord une catégorie dans l\'onglet Saisie.</p>';
+    return;
+  }
+  state.categories.forEach(cat => {
+    const row = document.createElement('div');
+    row.className = 'price-row';
+
+    const name = document.createElement('span');
+    name.className = 'price-row__name';
+    name.textContent = cat;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'price-row__input';
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.10';
+    input.inputMode = 'decimal';
+    input.placeholder = '0,00';
+    input.setAttribute('aria-label', 'Prix à la douzaine pour ' + cat);
+    if (state.categoryPrices[cat]) input.value = state.categoryPrices[cat];
+
+    input.addEventListener('change', () => {
+      const val = parseFloat(input.value);
+      if (isFinite(val) && val > 0) {
+        state.categoryPrices[cat] = Math.round(val * 100) / 100;
+      } else {
+        delete state.categoryPrices[cat];
+      }
+      input.value = state.categoryPrices[cat] || '';
+      saveState();
+      renderStats();
+      updateLiveTotal();
+    });
+
+    const suffix = document.createElement('span');
+    suffix.className = 'price-row__suffix';
+    suffix.textContent = '€ / douz.';
+
+    wrap.appendChild(input);
+    wrap.appendChild(suffix);
+    row.appendChild(name);
+    row.appendChild(wrap);
+    box.appendChild(row);
+  });
 }
 
 $('#btnAddCat').addEventListener('click', addCategory);
@@ -400,7 +487,10 @@ function updateLiveTotal() {
   const q = formQty();
   const doz = dozensOf(q);
   const oy = oystersOf(q);
-  $('#liveTotal').textContent = fmtDozens(doz) + ' · ' + fmtNum(oy) + ' ' + plural(oy, 'huître', 'huîtres');
+  let txt = fmtDozens(doz) + ' · ' + fmtNum(oy) + ' ' + plural(oy, 'huître', 'huîtres');
+  const price = selectedCategory ? (state.categoryPrices[selectedCategory] || 0) : 0;
+  if (price > 0) txt += ' · environ ' + fmtEUR(doz * price);
+  $('#liveTotal').textContent = txt;
 }
 
 /* ---------------- Formulaire : enregistrer ---------------- */
@@ -419,13 +509,16 @@ $('#entryForm').addEventListener('submit', ev => {
   const date = $('#fDate').value || todayISO();
   pushSnapshot();
 
+  const pricePerDozen = state.categoryPrices[selectedCategory] || 0;
+
   if (editingId) {
     const entry = state.entries.find(e => e.id === editingId);
     if (entry) {
       Object.assign(entry, {
         date, category: selectedCategory,
         dozens: q.dozens, half: q.half,
-        note: $('#fNote').value.trim().slice(0, 80)
+        note: $('#fNote').value.trim().slice(0, 80),
+        pricePerDozen
       });
     }
     stopEditing();
@@ -435,7 +528,8 @@ $('#entryForm').addEventListener('submit', ev => {
     state.entries.push(normalizeEntry({
       date, category: selectedCategory,
       dozens: q.dozens, half: q.half,
-      note: $('#fNote').value.trim()
+      note: $('#fNote').value.trim(),
+      pricePerDozen
     }));
     toast('Achat enregistré 🦪');
     resetForm(date);
@@ -559,6 +653,7 @@ function renderHistory() {
       if (e.dozens) parts.push(e.dozens + ' × 12');
       if (e.half) parts.push(e.half + ' × 6');
       const meta = parts.join(' + ') + ' = ' + fmtNum(oystersOf(e)) + ' ' + plural(oystersOf(e), 'huître', 'huîtres') +
+        (e.pricePerDozen ? ' · ' + fmtEUR(costOf(e)) : '') +
         (e.note ? ' · ' + e.note : '');
 
       row.innerHTML =
@@ -642,17 +737,21 @@ function renderStats() {
 
   const totalDoz = entries.reduce((s, e) => s + dozensOf(e), 0);
   const totalOy = entries.reduce((s, e) => s + oystersOf(e), 0);
+  const totalCost = entries.reduce((s, e) => s + costOf(e), 0);
+  const hasCost = totalCost > 0;
   const byDate = groupBy(entries, e => e.date);
   const dates = Object.keys(byDate).sort();
   const nbDays = dates.length;
 
   /* --- KPI --- */
-  kpis.innerHTML = [
+  const kpiList = [
     kpi(fmtNum(totalDoz), plural(totalDoz, 'douzaine', 'douzaines')),
     kpi(fmtNum(totalOy), plural(totalOy, 'huître', 'huîtres')),
     kpi(String(entries.length), plural(entries.length, 'achat', 'achats')),
     kpi(fmtNum(totalDoz / nbDays), 'douz. / jour d\'achat')
-  ].join('');
+  ];
+  if (hasCost) kpiList.push(kpi(fmtEUR(totalCost), 'dépensés'));
+  kpis.innerHTML = kpiList.join('');
 
   /* --- Graphique par jour --- */
   const dayVals = dates.map(d => ({
@@ -666,12 +765,14 @@ function renderStats() {
   const catRows = Object.keys(catMap).map(c => ({
     name: c,
     doz: catMap[c].reduce((s, e) => s + dozensOf(e), 0),
-    n: catMap[c].length
+    n: catMap[c].length,
+    cost: catMap[c].reduce((s, e) => s + costOf(e), 0)
   })).sort((a, b) => b.doz - a.doz);
 
   byCat.innerHTML = catRows.map(r => barRow(
     r.name,
-    fmtNum(r.doz) + ' douz. · ' + Math.round(r.doz / totalDoz * 100) + '%',
+    fmtNum(r.doz) + ' douz. · ' + Math.round(r.doz / totalDoz * 100) + '%' +
+      (r.cost > 0 ? ' · ' + fmtEUR(r.cost) : ''),
     r.doz / catRows[0].doz
   )).join('');
 
@@ -689,13 +790,15 @@ function renderStats() {
   const best = dayVals.slice().sort((a, b) => b.doz - a.doz)[0];
   const topCat = catRows[0];
   const spanDays = Math.round((parseISO(dates[dates.length - 1]) - parseISO(dates[0])) / 86400000) + 1;
-  recs.innerHTML = [
+  const recList = [
     record('Meilleur jour', fmtDateShort(best.date) + ' — ' + fmtNum(best.doz) + ' douz.'),
     record('Catégorie préférée', topCat.name),
     record('Jours avec achat', nbDays + ' / ' + spanDays),
     record('Moyenne par achat', fmtNum(totalDoz / entries.length) + ' douz.'),
     record('Rythme sur la période', fmtNum(totalOy / spanDays) + ' huîtres / jour')
-  ].join('');
+  ];
+  if (hasCost) recList.push(record('Prix moyen', fmtEUR(totalCost / totalDoz) + ' / douzaine'));
+  recs.innerHTML = recList.join('');
 }
 
 function kpi(val, lab) {
@@ -763,9 +866,9 @@ function download(filename, content, mime) {
 
 $('#btnExportCsv').addEventListener('click', () => {
   if (!state.entries.length) return toast('Rien à exporter');
-  const rows = [['Date', 'Categorie', 'Douzaines', 'Demi-douzaines', 'Total douzaines', 'Nb huitres', 'Note']];
+  const rows = [['Date', 'Categorie', 'Douzaines', 'Demi-douzaines', 'Total douzaines', 'Nb huitres', 'Prix/douzaine', 'Cout', 'Note']];
   state.entries.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-    rows.push([e.date, e.category, e.dozens, e.half, dozensOf(e), oystersOf(e), e.note || '']);
+    rows.push([e.date, e.category, e.dozens, e.half, dozensOf(e), oystersOf(e), e.pricePerDozen || 0, costOf(e), e.note || '']);
   });
   const csv = rows.map(r => r.map(cell => {
     const s = String(cell);
@@ -853,6 +956,7 @@ $('#fileImport').addEventListener('change', ev => {
       if (Array.isArray(data.categories) && data.categories.length) {
         state.categories = data.categories.filter(c => typeof c === 'string' && c.trim());
       }
+      state.categoryPrices = sanitizePrices(data.categoryPrices);
       saveState();
       selectedCategory = null;
       renderAll();
@@ -882,6 +986,7 @@ $('#btnReset').addEventListener('click', () => {
 
 function renderAll() {
   renderCategories();
+  renderCategoryPrices();
   renderToday();
   renderHistory();
   renderStats();
