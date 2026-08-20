@@ -845,7 +845,9 @@ function renderStats() {
   const entries = periodEntries();
   const kpis = $('#kpis');
   const chart = $('#chartDays');
+  const costChart = $('#chartCost');
   const byCat = $('#byCategory');
+  const byCost = $('#byCost');
   const byFmt = $('#byFormat');
   const recs = $('#records');
 
@@ -853,7 +855,9 @@ function renderStats() {
     kpis.innerHTML = '';
     const empty = '<div class="empty"><span>📊</span>Pas encore de données sur cette période.</div>';
     chart.innerHTML = empty;
+    if (costChart) costChart.innerHTML = '';
     byCat.innerHTML = '';
+    if (byCost) byCost.innerHTML = '';
     byFmt.innerHTML = '';
     recs.innerHTML = '';
     return;
@@ -880,9 +884,9 @@ function renderStats() {
   /* --- Graphique par jour --- */
   const dayVals = dates.map(d => ({
     date: d,
-    doz: byDate[d].reduce((s, e) => s + dozensOf(e), 0)
+    val: byDate[d].reduce((s, e) => s + dozensOf(e), 0)
   }));
-  chart.innerHTML = barChartSVG(dayVals);
+  chart.innerHTML = barChartSVG(dayVals, { ariaLabel: 'Douzaines achetées par jour' });
 
   /* --- Par catégorie --- */
   const catMap = groupBy(entries, e => e.category);
@@ -900,6 +904,31 @@ function renderStats() {
     r.doz / catRows[0].doz
   )).join('');
 
+  /* --- Dépenses (jour et catégorie) --- */
+  if (costChart) {
+    if (!hasCost) {
+      costChart.innerHTML = noCostHint();
+    } else {
+      const dayCostVals = dates.map(d => ({
+        date: d,
+        val: byDate[d].reduce((s, e) => s + costOf(e), 0)
+      }));
+      costChart.innerHTML = barChartSVG(dayCostVals, { ariaLabel: 'Dépenses par jour', fmtVal: fmtEUR });
+    }
+  }
+  if (byCost) {
+    if (!hasCost) {
+      byCost.innerHTML = noCostHint();
+    } else {
+      const costRows = catRows.filter(r => r.cost > 0).slice().sort((a, b) => b.cost - a.cost);
+      byCost.innerHTML = costRows.map(r => barRow(
+        r.name,
+        fmtEUR(r.cost) + ' · ' + Math.round(r.cost / totalCost * 100) + '%',
+        r.cost / costRows[0].cost
+      )).join('');
+    }
+  }
+
   /* --- Par format --- */
   const dozOnly = entries.reduce((s, e) => s + e.dozens, 0);
   const halfOnly = entries.reduce((s, e) => s + e.half, 0);
@@ -911,11 +940,11 @@ function renderStats() {
     barRow('Demi-douzaines', halfOnly + ' × 6 = ' + fmtNum(halfPart) + ' douz.', halfPart / maxPart);
 
   /* --- Records --- */
-  const best = dayVals.slice().sort((a, b) => b.doz - a.doz)[0];
+  const best = dayVals.slice().sort((a, b) => b.val - a.val)[0];
   const topCat = catRows[0];
   const spanDays = Math.round((parseISO(dates[dates.length - 1]) - parseISO(dates[0])) / 86400000) + 1;
   const recList = [
-    record('Meilleur jour', fmtDateShort(best.date) + ' — ' + fmtNum(best.doz) + ' douz.'),
+    record('Meilleur jour', fmtDateShort(best.date) + ' — ' + fmtNum(best.val) + ' douz.'),
     record('Catégorie préférée', topCat.name),
     record('Jours avec achat', nbDays + ' / ' + spanDays),
     record('Moyenne par achat', fmtNum(totalDoz / entries.length) + ' douz.'),
@@ -923,6 +952,16 @@ function renderStats() {
   ];
   if (hasCost) recList.push(record('Prix moyen', fmtEUR(totalCost / totalDoz) + ' / douzaine'));
   recs.innerHTML = recList.join('');
+}
+
+/** Message d'aide quand aucun coût n'est calculable, avec la cause la plus probable. */
+function noCostHint() {
+  const anyPriceDefined = Object.keys(state.priceHistory).length > 0;
+  const msg = anyPriceDefined
+    ? "Aucun achat de cette période n'a de prix connu à sa date. Vérifiez, dans l'onglet " +
+      'Historique, que la date du prix est bien antérieure ou égale à la date de ces achats.'
+    : "Indiquez un prix par douzaine dans l'onglet Historique pour voir apparaître vos dépenses ici.";
+  return '<p class="muted small" style="margin:0">' + escapeHtml(msg) + '</p>';
 }
 
 function kpi(val, lab) {
@@ -944,15 +983,18 @@ function record(lab, val) {
 }
 
 /** Histogramme SVG (scrollable horizontalement si beaucoup de jours) */
-function barChartSVG(data) {
+function barChartSVG(data, opts) {
+  opts = opts || {};
+  const ariaLabel = opts.ariaLabel || 'Douzaines achetées par jour';
+  const fmtVal = opts.fmtVal || fmtNum;
   const slot = 40, padL = 6, padR = 6, top = 20, bottom = 26, plotH = 120;
   const w = Math.max(300, padL + padR + data.length * slot);
   const h = top + plotH + bottom;
-  const max = Math.max.apply(null, data.map(d => d.doz)) || 1;
+  const max = Math.max.apply(null, data.map(d => d.val)) || 1;
   const barW = 22;
 
   let svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h +
-            '" role="img" aria-label="Douzaines achetées par jour">';
+            '" role="img" aria-label="' + escapeHtml(ariaLabel) + '">';
 
   // lignes de repère
   [0, 0.5, 1].forEach(f => {
@@ -962,12 +1004,12 @@ function barChartSVG(data) {
 
   data.forEach((d, i) => {
     const cx = padL + i * slot + slot / 2;
-    const bh = Math.max(3, (d.doz / max) * plotH);
+    const bh = Math.max(3, (d.val / max) * plotH);
     const y = top + plotH - bh;
-    const cls = d.doz === max ? 'bar bar--max' : 'bar';
+    const cls = d.val === max ? 'bar bar--max' : 'bar';
     svg += '<rect class="' + cls + '" x="' + (cx - barW / 2) + '" y="' + y + '" width="' + barW +
            '" height="' + bh + '" rx="4"/>';
-    svg += '<text class="val" x="' + cx + '" y="' + (y - 5) + '">' + fmtNum(d.doz) + '</text>';
+    svg += '<text class="val" x="' + cx + '" y="' + (y - 5) + '">' + escapeHtml(fmtVal(d.val)) + '</text>';
     svg += '<text class="lbl" x="' + cx + '" y="' + (top + plotH + 15) + '">' + fmtDateShort(d.date) + '</text>';
   });
 

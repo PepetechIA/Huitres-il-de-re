@@ -40,6 +40,8 @@ catégories achetées le même jour.
   et **total dépensé** si un prix est renseigné ;
 - **histogramme des douzaines par jour** (le meilleur jour ressort en orange) ;
 - **répartition par catégorie** (en douzaines, en % et en euros) ;
+- **histogramme des dépenses par jour** et **répartition des dépenses par catégorie** (en euros et
+  en %), avec un message d'aide si aucun achat de la période n'a de prix connu à sa date ;
 - **répartition douzaines / demi-douzaines** ;
 - **records** : meilleur jour, catégorie préférée, jours avec achat, moyenne par achat, rythme
   en huîtres par jour, et prix moyen à la douzaine si un prix est renseigné.
