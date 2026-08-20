@@ -23,12 +23,11 @@ concurrency:
 jobs:
   deployer:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploiement.outputs.page_url }}
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Préparer les fichiers du site
         run: |
@@ -36,21 +35,23 @@ jobs:
           cp index.html app.css app.js sw.js manifest.webmanifest _site/
           cp -r icons _site/
 
-      - name: Configurer GitHub Pages
-        id: pages
+      - name: Déployer sur GitHub Pages
         run: |
-          # La configuration via l'API est bloquée dans ce contexte, on la contourne.
-          # Le déploiement direct fonctionne sur les dépôts publics.
-          echo "pages_outcome=success" >> $GITHUB_OUTPUT
+          # Configurer git
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-      - name: Envoyer le site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
+          # Créer ou basculer sur la branche gh-pages
+          git checkout --orphan gh-pages 2>/dev/null || git checkout gh-pages
+          git rm -rf . 2>/dev/null || true
 
-      - name: Déployer
-        id: deploiement
-        uses: actions/deploy-pages@v4
+          # Copier les fichiers du site
+          cp -r _site/* .
+
+          # Commiter et pousser
+          git add .
+          git commit -m "Déployer l'appli" || echo "Rien à commiter"
+          git push -u origin gh-pages --force
 
       - name: Adresse de l'appli
         run: |
