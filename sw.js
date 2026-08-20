@@ -1,5 +1,5 @@
 /* Service worker : l'appli fonctionne hors connexion (utile sur la plage). */
-const CACHE = 'huitres-v7';
+const CACHE = 'huitres-v8';
 const ASSETS = [
   './',
   './index.html',

@@ -921,11 +921,9 @@ function renderStats() {
       byCost.innerHTML = noCostHint();
     } else {
       const costRows = catRows.filter(r => r.cost > 0).slice().sort((a, b) => b.cost - a.cost);
-      byCost.innerHTML = costRows.map(r => barRow(
-        r.name,
-        fmtEUR(r.cost) + ' · ' + Math.round(r.cost / totalCost * 100) + '%',
-        r.cost / costRows[0].cost
-      )).join('');
+      byCost.innerHTML =
+        '<div class="chart">' + pieChartSVG(costRows, totalCost) + '</div>' +
+        pieLegend(costRows, totalCost);
     }
   }
 
@@ -962,6 +960,43 @@ function noCostHint() {
       'Historique, que la date du prix est bien antérieure ou égale à la date de ces achats.'
     : "Indiquez un prix par douzaine dans l'onglet Historique pour voir apparaître vos dépenses ici.";
   return '<p class="muted small" style="margin:0">' + escapeHtml(msg) + '</p>';
+}
+
+/* Palette cyclique pour le camembert des dépenses : dérivée des teintes de l'app (mer, sable). */
+const PIE_COLORS = ['#0f8493', '#f6b352', '#0d5b66', '#c98a3e', '#5aa7a0', '#e07856', '#8fb8bd', '#b3542f', '#3f6b73', '#d9a441'];
+
+/** Camembert SVG (donut) : une part par ligne {name, cost}, triées avant l'appel. */
+function pieChartSVG(rows, total) {
+  const size = 180, cx = size / 2, cy = size / 2, r = 62, strokeW = 30;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+
+  let svg = '<svg viewBox="0 0 ' + size + ' ' + size + '" width="' + size + '" height="' + size +
+    '" role="img" aria-label="Répartition des dépenses par catégorie">' +
+    '<g transform="rotate(-90 ' + cx + ' ' + cy + ')">';
+  rows.forEach((row, i) => {
+    const frac = row.cost / total;
+    const segLen = Math.max(0, frac * circumference - 1.5); // léger espace entre les parts
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' +
+      PIE_COLORS[i % PIE_COLORS.length] + '" stroke-width="' + strokeW + '" stroke-linecap="round" ' +
+      'stroke-dasharray="' + segLen + ' ' + (circumference - segLen) + '" stroke-dashoffset="' + (-offset) + '"/>';
+    offset += frac * circumference;
+  });
+  svg += '</g>';
+  svg += '<text x="' + cx + '" y="' + (cy - 3) + '" class="pie-total-val">' + escapeHtml(fmtEUR(total)) + '</text>';
+  svg += '<text x="' + cx + '" y="' + (cy + 15) + '" class="pie-total-lab">dépensés</text>';
+  return svg + '</svg>';
+}
+
+/** Légende du camembert : pastille de couleur, nom, montant et %, dans le même ordre que les parts. */
+function pieLegend(rows, total) {
+  return '<ul class="pie-legend">' + rows.map((row, i) => {
+    const color = PIE_COLORS[i % PIE_COLORS.length];
+    const pct = Math.round(row.cost / total * 100);
+    return '<li><span class="pie-legend__dot" style="background:' + color + '"></span>' +
+      '<span class="pie-legend__name">' + escapeHtml(row.name) + '</span>' +
+      '<b>' + escapeHtml(fmtEUR(row.cost)) + ' · ' + pct + '%</b></li>';
+  }).join('') + '</ul>';
 }
 
 function kpi(val, lab) {

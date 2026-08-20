@@ -212,6 +212,15 @@ input:focus-visible,button:focus-visible{outline:2.5px solid var(--sea-500); out
 .chart .val{fill:var(--text); font-size:9px; font-weight:700; text-anchor:middle}
 .chart .grid{stroke:var(--line); stroke-width:1}
 
+/* ---------- Camembert des dépenses ---------- */
+.pie-total-val{fill:var(--text); font-size:19px; font-weight:800; text-anchor:middle; font-variant-numeric:tabular-nums}
+.pie-total-lab{fill:var(--text-soft); font-size:9px; text-anchor:middle; text-transform:uppercase; letter-spacing:.4px}
+.pie-legend{list-style:none; margin:14px 0 0; padding:0; display:grid; gap:8px}
+.pie-legend li{display:flex; align-items:center; gap:9px; font-size:.88rem}
+.pie-legend__dot{flex:0 0 auto; width:11px; height:11px; border-radius:50%}
+.pie-legend__name{flex:1 1 auto; min-width:0; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pie-legend b{color:var(--text-soft); font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums}
+
 /* ---------- Barres de répartition ---------- */
 .bars{display:grid; gap:11px}
 .bar-row__top{display:flex; justify-content:space-between; font-size:.88rem; margin-bottom:5px; gap:8px}
