@@ -1,0 +1,19 @@
+{
+  "name": "Mes Huîtres — Île de Ré",
+  "short_name": "Mes Huîtres",
+  "description": "Carnet de suivi des douzaines et demi-douzaines d'huîtres achetées, avec statistiques.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f6f7",
+  "theme_color": "#0d5b66",
+  "icons": [
+    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -9,8 +9,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -25,16 +23,17 @@ jobs:
 
       - name: Préparer les fichiers du site
         run: |
-          mkdir -p _site
-          cp index.html app.css app.js sw.js manifest.webmanifest _site/
-          cp -r icons _site/
+          mkdir -p docs
+          cp index.html app.css app.js sw.js manifest.webmanifest docs/
+          cp -r icons docs/
 
-      - name: Déployer sur gh-pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./_site
-          force_orphan: true
+      - name: Envoyer le code
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add docs/
+          git diff --cached --quiet || git commit -m "Déployer l'appli dans /docs"
+          git push
 
       - name: Adresse de l'appli
         run: |
