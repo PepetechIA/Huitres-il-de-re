@@ -1,4 +1,4 @@
-# 🦪 Mes Huîtres — Île de Ré
+# 🦪 MPX Huîtres — Île de Ré
 
 Petite application pour téléphone qui note **les douzaines et demi-douzaines d'huîtres achetées
 pendant les vacances**, avec le jour d'achat, la catégorie d'huîtres, et un **module de
@@ -96,7 +96,7 @@ le site à chaque envoi de code, sans étape supplémentaire).
 - **Android (Chrome)** : ouvrir l'adresse → menu **⋮** → **Ajouter à l'écran d'accueil**
   (ou la bannière *Installer l'application*).
 
-L'icône « Mes Huîtres » apparaît alors avec les autres applications. Une fois ouverte une
+L'icône « MPX Huîtres » apparaît alors avec les autres applications. Une fois ouverte une
 première fois, elle fonctionne **hors connexion** (plage, marché, cabane sans réseau).
 
 ### Essayer sur ordinateur, sans rien mettre en ligne

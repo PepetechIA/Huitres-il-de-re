@@ -1,5 +1,5 @@
 /* =========================================================
-   Mes Huîtres — suivi des achats de douzaines d'huîtres
+   MPX Huîtres — suivi des achats de douzaines d'huîtres
    Données 100 % locales (localStorage), aucune connexion.
    ========================================================= */
 'use strict';
